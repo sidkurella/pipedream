@@ -1,2 +1,2 @@
 # pipedream
-Generic data pipelining in GO
+Generic data pipelining in Go
