@@ -11,6 +11,8 @@ var ErrComparisonFailed = fmt.Errorf("failed to compare values")
 var ErrIncompatibleTypes = fmt.Errorf("cannot compare incompatible types")
 var ErrOperationNotSupported = fmt.Errorf("comparison operation not supported for these types")
 var ErrNilCondition = fmt.Errorf("nil condition provided")
+var ErrNilCustomCompareFunc = fmt.Errorf("custom compare function is nil")
+var ErrTypeAssertionFailed = fmt.Errorf("failed to assert value to expected type for custom comparison")
 
 type ConditionOperand int
 
@@ -400,4 +402,67 @@ func compareBool(l, r bool, op ConditionOperand) (bool, error) {
 	default: // >, <, >=, <= make no sense for bools
 		return false, fmt.Errorf("%w: operand %s not supported for bool comparison", ErrOperationNotSupported, op.String())
 	}
+}
+
+// CustomCompareFunc defines the signature for a user-provided comparison function
+// between two values of a specific type T.
+type CustomCompareFunc[T any] func(lhs T, rhs T) (bool, error)
+
+// CustomCompareCondition allows defining a condition using a custom comparison function
+// applied to values built by LHS and RHS ValueBuilders. It expects both builders
+// to produce values of type T.
+type CustomCompareCondition[T any] struct {
+	LHS         ValueBuilder
+	RHS         ValueBuilder
+	CompareFunc CustomCompareFunc[T]
+}
+
+// Evaluate implements the Condition interface for CustomCompareCondition.
+// It builds LHS and RHS values, asserts they are of type T, and then executes
+// the custom comparison function.
+func (c *CustomCompareCondition[T]) Evaluate(pctx PipelineContext) (bool, error) {
+	if c.LHS == nil || c.RHS == nil {
+		return false, fmt.Errorf("%w: LHS or RHS builder is nil in CustomCompareCondition", ErrInvalidCondition)
+	}
+	if c.CompareFunc == nil {
+		return false, ErrNilCustomCompareFunc
+	}
+
+	lhsValAny, err := c.LHS.Build(pctx)
+	if err != nil {
+		return false, fmt.Errorf("evaluating LHS for custom comparison: %w", err)
+	}
+
+	rhsValAny, err := c.RHS.Build(pctx)
+	if err != nil {
+		return false, fmt.Errorf("evaluating RHS for custom comparison: %w", err)
+	}
+
+	// Get the expected type name using reflection on a zero value of T
+	// Note: This might not be perfect for interface types, but good for concrete types.
+	var zeroT T
+	expectedTypeName := reflect.TypeOf(zeroT).String() // Get type name for error message
+
+	// Attempt type assertion for LHS
+	lhsValTyped, ok := lhsValAny.(T)
+	if !ok {
+		actualTypeName := "nil"
+		if lhsValAny != nil {
+			actualTypeName = reflect.TypeOf(lhsValAny).String()
+		}
+		return false, fmt.Errorf("%w: expected LHS type '%s', got '%s'", ErrTypeAssertionFailed, expectedTypeName, actualTypeName)
+	}
+
+	// Attempt type assertion for RHS
+	rhsValTyped, ok := rhsValAny.(T)
+	if !ok {
+		actualTypeName := "nil"
+		if rhsValAny != nil {
+			actualTypeName = reflect.TypeOf(rhsValAny).String()
+		}
+		return false, fmt.Errorf("%w: expected RHS type '%s', got '%s'", ErrTypeAssertionFailed, expectedTypeName, actualTypeName)
+	}
+
+	// Call the custom comparison function with the correctly typed values
+	return c.CompareFunc(lhsValTyped, rhsValTyped)
 }
