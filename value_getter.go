@@ -104,16 +104,4 @@ func getValueFromReflectValue(v reflect.Value, key reflect.Value) (any, error) {
 	}
 }
 
-type StaticValueGetter[T any] struct {
-	Value T
-}
-
-func NewStaticValueGetter[T any](v T) StaticValueGetter[T] {
-	return StaticValueGetter[T]{Value: v}
-}
-
-func (s StaticValueGetter[T]) GetValue(_ any, _ any) (any, error) {
-	return s.Value, nil
-}
-
 // TODO: Chainable value getter?
