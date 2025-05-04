@@ -14,4 +14,10 @@ type BranchNode struct {
 	// Pipeline to execute if the condition is false.
 	// If nil and the condition is false, the pipeline execution will return ErrTerminatedEarly.
 	FalsePipeline *pipedream.Pipeline
+
+	// CloneContext indicates if the child pipeline should receive a copy of the parent pipeline context.
+	// If false (default), it will reuse the context. This may be useful if there are other nodes to run
+	// after this one no matter if the condition was true or false.
+	// If true, the context will be cloned.
+	CloneContext bool
 }
